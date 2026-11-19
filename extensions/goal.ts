@@ -1574,6 +1574,53 @@ function appendDiaryEntry(
 			let movedAv = 0;
 			try {
 				const readAv = readTail(filePath, MAX_DIARY_FILE_BYTES);
+				// (579/580) Over-window catch-up: a truncated day file skipped the valve forever (the
+				// 529 residual, measured live at 2x window in 579) - the file never self-heals and
+				// every reader 1MB tail-window hides older entries. Safe catch-up: whole-file read
+				// ONLY under a 3x-window host cap (4MB max - bounded even for hostile files), same
+				// parse/split/additive-first/rebuild + round-trip-refusal pipeline; beyond the cap
+				// the failure is TAPPED + honest, never a silent skip (the 522 lesson).
+				if (readAv.truncated && stAv.size <= MAX_DIARY_FILE_BYTES * 3) {
+					const wholeAv = fs.readFileSync(filePath, "utf8");
+					const entriesCv = parseDayText(wholeAv, dayNoExtAv);
+					const cutoffCv = Date.now() - 12 * 3_600_000;
+					const keepCv: typeof entriesCv = [];
+					const moveCv: typeof entriesCv = [];
+					for (const eCv of entriesCv) {
+						const tsCv = Date.parse(dayNoExtAv + "T" + eCv.time + ":00");
+						if (Number.isFinite(tsCv) && tsCv < cutoffCv) moveCv.push(eCv);
+						else keepCv.push(eCv);
+					}
+					if (moveCv.length > 0 && keepCv.length > 0) {
+						const archCv = path.join(diaryDir(cwd), "archive-" + dayNoExtAv + ".md");
+						const canonCv = (eX: (typeof entriesCv)[number]) => [
+							"## " + eX.time + " — " + eX.title,
+							"- kind: " + eX.kind,
+							"- what: " + eX.what,
+							"- how: " + eX.how,
+							"- why: " + eX.why,
+							...(eX.files?.length ? ["- files: " + eX.files.join(", ")] : []),
+						].join("\n");
+						const archNewCv = moveCv.map(canonCv).join("\n\n") + "\n";
+						let archCombCv: string | undefined;
+						try { const prevResCv = readTail(archCv, MAX_DIARY_FILE_BYTES); const prevCv = prevResCv.text ?? ""; archCombCv = prevCv.trim().length > 0 ? prevCv + "\n" + archNewCv : archNewCv; } catch { archCombCv = archNewCv; }
+						if (parseDayText(archCombCv, dayNoExtAv).length >= moveCv.length) {
+							atomicWrite(archCv, archCombCv);
+							const keptCv = "# Diary\n\n" + keepCv.map(canonCv).join("\n\n") + "\n";
+							const reKeepCv = parseDayText(keptCv, dayNoExtAv);
+							if (reKeepCv.length === keepCv.length) {
+								atomicWrite(filePath, keptCv);
+								movedAv = moveCv.length;
+							} else {
+								tapSwallowed("auto-valve catch-up rebuild round-trip mismatch: kept=" + keepCv.length + " reparsed=" + reKeepCv.length);
+							}
+						} else {
+								tapSwallowed("auto-valve catch-up archive round-trip mismatch");
+						}
+					}
+				} else if (readAv.truncated) {
+					tapSwallowed("auto-valve: day file " + dayNoExtAv + " exceeds 3x window (" + Math.round(stAv.size / 1024) + "KB) - manual /goal diary archive needed");
+				}
 				if (!readAv.truncated) {
 					const entriesAv = parseDayText(readAv.text, dayNoExtAv);
 					const keepAv: typeof entriesAv = [];
