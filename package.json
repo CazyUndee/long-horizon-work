@@ -1,0 +1,30 @@
+{
+	"name": "long-horizon-work",
+	"version": "1.0.0",
+	"description": "Long-horizon work for pi: persistent goals and autonomous improve loops with durable diary memory, cross-session memory, a host task inbox, session-set save/restore, long-running job control, and a model speed meter - one package.",
+	"keywords": [
+		"pi-package"
+	],
+	"license": "MIT",
+	"files": [
+		"extensions/",
+		"tests/",
+		"README.md"
+	],
+	"pi": {
+		"extensions": [
+			"extensions/goal.ts",
+			"extensions/memory.ts",
+			"extensions/background-jobs.ts",
+			"extensions/session-fleet.ts",
+			"extensions/speed.ts"
+		]
+	},
+	"peerDependencies": {
+		"@earendil-works/pi-ai": "*",
+		"@earendil-works/pi-agent-core": "*",
+		"@earendil-works/pi-coding-agent": "*",
+		"@earendil-works/pi-tui": "*",
+		"typebox": "*"
+	}
+}
