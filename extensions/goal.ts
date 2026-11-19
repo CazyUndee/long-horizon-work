@@ -5078,7 +5078,7 @@ if (!match2) { safeNotify(ctx, `No task matching '${truncate(id, 80)}' (show).`,
 								const bakEntries587 = parseDayText(bakTxt587, day587);
 								const liveEntries587 = fs.existsSync(livePath587) ? parseDayText(readTail(livePath587, MAX_DIARY_FILE_BYTES).text, day587) : [];
 								if (fs.existsSync(livePath587)) fs.copyFileSync(livePath587, livePath587 + ".crashed-" + Date.now().toString(36));
-								fs.writeFileSync(livePath587, bakTxt587);
+								atomicWrite(livePath587, bakTxt587); // (589) torn-write guard: the live corpus never sees a half-written file (455)
 								dayParseCache.clear();
 								safeNotify(ctx, "diary restore: recovered " + bakEntries587.length + " entries from " + want587 + " - live had " + liveEntries587.length + ". Previous live preserved as .crashed-<ts>; /goal diary doctor to verify.", "info");
 							} catch (err587) {
