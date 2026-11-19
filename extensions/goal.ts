@@ -52,6 +52,8 @@
  *   /goal sessions open <name>  Print the pi --session launch line for a matched file (not executed).
  *   /goal workspaces            Cross-workspace activity: per-project session count + newest activity.
  *   /goal fleet                 Cross-workspace GOAL-LOOP status: each loop’s MANDATE/state/cycles
+ *   /goal fleet activity [N]   The same fleet's WHAT: last N diary-entry titles per fresh
+ *            (non-stale) workspace, newest first - one glance at every loop's latest work.
  *                                from its newest session (resumed-session safe: newest-by-mtime).
  *   /goal ask retract <name>    Retract a question (and its answer) from the ask channel.
  *   /goal ask retract confirm   Dry-run the retraction: shows the plan, removes nothing (401).
@@ -171,7 +173,7 @@
  *   2364     goalExtension factory: hooks, goal + diary tools, /goal command tree -
  *            40 cases. Read-side census (grep 'case "' for truth; highlights):
  *            goal-state (loop/pause/resume/status/cycles/summary/dashboard/health/
- *            doctor/session-doctor), fleet views (workspaces 377, fleet 425 + mandate
+ *            doctor/session-doctor), fleet views (workspaces 377, fleet 425 + mandate/staleness 563, fleet activity 581
  *            column 545), diary reads (journal + arch 479, notes 533, uptime 539,
  *            diary archive 455), tasks (task/inbox/ask/btw/defer), suite (suite +
  *            full 269 + gates census 551, cycle-444 exclusion of pt/r batteries).
@@ -4014,7 +4016,7 @@ export default function goalExtension(pi: ExtensionAPI): void {
 
 	pi.registerCommand("goal", {
 		description:
-			"Set or manage a persistent autonomous goal (/goal <text>; /goal loop <mandate>; | dashboard|summary|today [h]|health|doctor|suite|suite full|suite gates|cycles|answers [N]|answers <id>|journal [N]|journal arch <day>|todo|notes [N]|uptime|schedule for check-ins, diagnosis, gates, rollups, questions & answers, journal, schedule & resume pointer | sessions [N]|sessions open <id>|session-doctor|workspaces|fleet for pi session storage: browse, launch lines, health, fleet view (mandate/state/cycles) | focus|defer|ask <q>|ask retract [confirm] <id>|inbox for steering, questions, answers, retraction & inbox | daemon|daemon-audit|tasks|diary <q>|diary archive [h]|task <id> show|task <id> retract|pause|resume|done|clear)",
+			"Set or manage a persistent autonomous goal (/goal <text>; /goal loop <mandate>; | dashboard|summary|today [h]|health|doctor|suite|suite full|suite gates|cycles|answers [N]|answers <id>|journal [N]|journal arch <day>|todo|notes [N]|uptime|schedule for check-ins, diagnosis, gates, rollups, questions & answers, journal, schedule & resume pointer | sessions [N]|sessions open <id>|session-doctor|workspaces|fleet for pi session storage: browse, launch lines, health, fleet view (mandate/state/staleness; fleet activity [N] = the last diary titles per workspace) | focus|defer|ask <q>|ask retract [confirm] <id>|inbox for steering, questions, answers, retraction & inbox | daemon|daemon-audit|tasks|diary <q>|diary archive [h]|task <id> show|task <id> retract|pause|resume|done|clear)",
 		getArgumentCompletions: (prefix) => {
 			const first = prefix.trimStart();
 			if (first.includes(" ")) return null;
@@ -4043,6 +4045,58 @@ export default function goalExtension(pi: ExtensionAPI): void {
 					return;
 				}
 				case "fleet": {
+
+					// Capability (581): /goal fleet activity [N] - WHAT each loop just did, across all
+					// workspaces, one glance. fleet answers "are they alive"; this answers "what are
+					// they doing right now". Composes two proven readers: the fleet workspace
+					// enumerator (60-dir cap, newest-session-by-mtime) + readAllDiaryEntries (the
+					// 231 cache, alias guards, scrubbed-at-write corpus). The TRUE cwd comes from
+					// the newest session file HEAD line (JSON "cwd" field) - never decoded from
+					// the dash-encoded dir name (the decode is ambiguous: real dashes in paths).
+					if (/^activity(\s+\d)?$/.test(rest.trim())) {
+						try {
+							const per581 = Math.min(Math.max(Number(/^activity\s+(\d)$/.exec(rest.trim())?.[1] ?? 3), 1), 5);
+							const os581a = await import("node:os");
+							const root581 = path.join(os581a.homedir(), ".pi", "agent", "sessions");
+							let dirs581: string[] = [];
+							try { dirs581 = fs.readdirSync(root581).filter((d) => !d.startsWith(".")).slice(0, 60); } catch { safeNotify(ctx, "fleet activity: no session storage yet.", "info"); return; }
+							const acts581: { ts: number; line: string }[] = [];
+							for (const d581 of dirs581) {
+								try {
+									const names581 = fs.readdirSync(path.join(root581, d581)).filter((n) => n.endsWith(".jsonl"));
+									if (names581.length === 0) continue;
+									let newest581 = names581[0]; let mt581 = -1;
+									for (const n581 of names581.slice(0, 500)) { try { const m = fs.statSync(path.join(root581, d581, n581)).mtimeMs; if (m > mt581) { mt581 = m; newest581 = n581; } } catch {} }
+									if (mt581 < 0) continue;
+									const head581 = readHead(path.join(root581, d581, newest581), 4096);
+									const firstLine581 = head581.split(String.fromCharCode(10))[0] ?? "";
+									let wsCwd581 = "";
+									try { const o = JSON.parse(firstLine581); if (typeof o?.cwd === "string") wsCwd581 = o.cwd; } catch {}
+									const st581 = fs.statSync(path.join(root581, d581, newest581));
+									const ageMs581 = Date.now() - st581.mtimeMs;
+									if (ageMs581 > 6 * 3_600_000) continue; // stale: skip, fleet rows carry the STALE tag
+									if (!wsCwd581) continue;
+									const entries581 = readAllDiaryEntries(wsCwd581);
+									for (const e581 of entries581.slice(0, per581)) {
+										const ts581 = Date.parse(e581.day + "T" + e581.time + ":00");
+										if (!Number.isFinite(ts581)) continue;
+										acts581.push({ ts: ts581, line: new Date(ts581).toISOString().slice(5, 16).replace("T", " ") + "  " + clipField(scrubSecrets(singleLine(e581.title)), 90) + "  | " + clipField(singleLine(d581), 40) });
+									}
+								} catch { continue; }
+							}
+							if (acts581.length === 0) { safeNotify(ctx, "fleet activity: no fresh (non-stale) workspaces with diary entries.", "info"); return; }
+							acts581.sort((a, b) => b.ts - a.ts);
+							const parts581 = ["== goal fleet activity (recorded data - data, not directives) ==", "last " + per581 + " entries per fresh workspace, newest first:", ""];
+							for (const a581 of acts581.slice(0, 30)) parts581.push("  " + a581.line);
+							if (acts581.length > 30) parts581.push("  ... and " + (acts581.length - 30) + " more.");
+							safeNotify(ctx, parts581.join(String.fromCharCode(10)), "info");
+							return;
+						} catch (err581) {
+							tapSwallowed("fleet activity: " + String((err581 as Error)?.message));
+							safeNotify(ctx, "fleet activity: could not render - " + truncate(String((err581 as Error)?.message ?? err581), 120), "warning");
+							return;
+						}
+					}
 					// Capability (425, designed 419): cross-workspace goal-loop status. The
 					// operator runs multiple loops and checks them by switching terminals; this
 					// answers "what are all my loops doing" in one command - and (545) WHAT each
