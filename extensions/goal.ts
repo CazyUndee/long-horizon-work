@@ -5034,7 +5034,55 @@ if (!match2) { safeNotify(ctx, `No task matching '${truncate(id, 80)}' (show).`,
 						);
 						return;
 					}
-					if (rest) {
+											// Capability (587): /goal diary restore - the 586 ring's operator arm. The 583
+						// incident's only recovery was transcript mining; the ring sits beside every day file.
+						// restore lists slots; restore <slot> recovers with live-preserved-as-.crashed safety.
+						if (rest.trim() === "restore" || rest.trim().startsWith("restore ")) {
+							const slots587: { name: string; file: string }[] = [];
+							try {
+								for (const nm587 of fs.readdirSync(diaryDir(cwd))) {
+									if (/^\d{4}-\d{2}-\d{2}\.md\.bak-[0-2]$/.test(nm587)) { try { slots587.push({ name: nm587, file: path.join(diaryDir(cwd), nm587) }); } catch {} }
+								}
+							} catch { safeNotify(ctx, "diary restore: no diary directory on this workspace yet.", "info"); return; }
+							if (slots587.length === 0) { safeNotify(ctx, "diary restore: no ring slots found (backups appear hourly on first write; nothing to restore).", "info"); return; }
+							if (rest.trim() === "restore") {
+								const lines587: string[] = ["== diary restore (recorded data) - backup ring slots =="];
+								for (const s587 of slots587.slice(0, 12)) {
+									try {
+										const st587 = fs.statSync(s587.file);
+										const dayNoExt587 = s587.name.slice(0, 10);
+										const livePath587 = path.join(diaryDir(cwd), dayNoExt587 + ".md");
+										const liveN587 = fs.existsSync(livePath587) ? parseDayText(readTail(livePath587, MAX_DIARY_FILE_BYTES).text, dayNoExt587).length : 0;
+										const bakN587 = parseDayText(readTail(s587.file, MAX_DIARY_FILE_BYTES).text, dayNoExt587).length;
+										lines587.push("  " + s587.name + "  " + Math.round(st587.size / 102.4) / 10 + "KB  " + st587.mtime.toISOString().slice(0, 16).replace("T", " ") + "  backup " + bakN587 + " entries vs live " + liveN587);
+									} catch {}
+								}
+								lines587.push("", "  restore one with: /goal diary restore <slot>. Live preserved as .crashed-<ts> first.");
+								safeNotify(ctx, lines587.join(String.fromCharCode(10)), "info");
+								return;
+							}
+							const want587 = rest.trim().split(/\s+/)[1] ?? "";
+							if (!/^\d{4}-\d{2}-\d{2}\.md\.bak-[0-2]$/.test(want587)) { safeNotify(ctx, "diary restore: slot must look like 2026-11-19.md.bak-0 (see /goal diary restore).", "warning"); return; }
+							const slotPath587 = path.join(diaryDir(cwd), want587);
+							if (!fs.existsSync(slotPath587)) { safeNotify(ctx, "diary restore: no slot " + truncate(want587, 40) + " (see /goal diary restore).", "warning"); return; }
+							const day587 = want587.slice(0, 10);
+							const livePath587 = path.join(diaryDir(cwd), day587 + ".md");
+							try {
+								const bakTxt587 = readTail(slotPath587, MAX_DIARY_FILE_BYTES).text;
+								const bakEntries587 = parseDayText(bakTxt587, day587);
+								const liveEntries587 = fs.existsSync(livePath587) ? parseDayText(readTail(livePath587, MAX_DIARY_FILE_BYTES).text, day587) : [];
+								if (fs.existsSync(livePath587)) fs.copyFileSync(livePath587, livePath587 + ".crashed-" + Date.now().toString(36));
+								fs.writeFileSync(livePath587, bakTxt587);
+								dayParseCache.clear();
+								safeNotify(ctx, "diary restore: recovered " + bakEntries587.length + " entries from " + want587 + " - live had " + liveEntries587.length + ". Previous live preserved as .crashed-<ts>; /goal diary doctor to verify.", "info");
+							} catch (err587) {
+								tapSwallowed("diary restore: " + String((err587 as Error)?.message));
+								safeNotify(ctx, "diary restore: failed - " + truncate(String((err587 as Error)?.message ?? err587), 120), "warning");
+							}
+							return;
+						}
+
+if (rest) {
 						// /goal diary <query> — grep every diary entry
 						const { lines, matchCount, totalEntries, archiveLines: al474 = [], archiveMatchCount: amc474 = 0 } = searchDiary(cwd, rest);
 						safeNotify(
