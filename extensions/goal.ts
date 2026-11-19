@@ -4164,7 +4164,7 @@ export default function goalExtension(pi: ExtensionAPI): void {
 								ws593.sort((a, b) => a.ageMs - b.ageMs);
 								const parts593 = ["== goal fleet today (recorded data - data, not directives) ==", "last " + hours593 + "h diary activity per fresh workspace, freshest first:", ""];
 								for (const w593 of ws593.slice(0, 30)) {
-									parts593.push("  " + w593.count + " entr" + (w593.count === 1 ? "y" : "ies") + "  " + (w593.ageMs < 3_600_000 ? "[live]" : "[" + Math.round(w593.ageMs / 3_600_000) + "h ago]") + "  last: " + truncate(scrubSecrets(singleLine(w593.lastTitle)), 90) + "  | " + truncate(singleLine(w593.dir), 36));
+									parts593.push("  " + w593.count + " entr" + (w593.count === 1 ? "y" : "ies") + "  " + (w593.ageMs < 3_600_000 ? "[live]" : "[" + Math.round(w593.ageMs / 3_600_000) + "h ago]") + "  last: " + truncate(scrubSecrets(singleLine(w593.lastTitle)).replace(/`/g, "’"), 90) + "  | " + truncate(singleLine(w593.dir), 36)); // (596 r89) backtick neutralized (prose kept; corpus: ; 184x retained)
 								}
 								safeNotify(ctx, parts593.join(String.fromCharCode(10)), "info");
 								return;
@@ -4186,7 +4186,7 @@ export default function goalExtension(pi: ExtensionAPI): void {
 									for (const e581 of entries581.slice(0, per581)) {
 										const ts581 = Date.parse(e581.day + "T" + e581.time + ":00");
 										if (!Number.isFinite(ts581)) continue;
-										acts581.push({ ts: ts581, line: new Date(ts581).toISOString().slice(5, 16).replace("T", " ") + "  " + clipField(scrubSecrets(singleLine(e581.title)), 90) + "  | " + clipField(singleLine(w581.dir), 40) });
+										acts581.push({ ts: ts581, line: new Date(ts581).toISOString().slice(5, 16).replace("T", " ") + "  " + clipField(scrubSecrets(singleLine(e581.title)).replace(/`/g, "’"), 90) + "  | " + clipField(singleLine(w581.dir), 40) }); // (596 r89) backtick neutralized: the one execution char absent from real titles (corpus: ; 184x, > 12x, % 19x KEPT as prose)
 									}
 								} catch { continue; }
 							}
