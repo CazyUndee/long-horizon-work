@@ -34,7 +34,9 @@ Five extensions, one package:
 ## Install
 
 ```bash
-pi install npm:long-horizon-work    # once published
+pi install git:github.com/CazyUndee/long-horizon-work
+# or once published to npm:
+pi install npm:long-horizon-work
 # or from a local checkout:
 pi install ./pi-goal-package
 ```
@@ -87,3 +89,11 @@ No network access, no telemetry beyond local logs.
 State lives in: `~/goal-diary/` (durable memory), `~/goal-inbox/` (host task inbox),
 `~/.pi-goal/` per workspace (goal state + daemon info). All writes are queue-serialized and
 tail-bounded.
+
+## Requirements for running the test suite
+
+The suite exercises the extension against the **pi runtime it will actually load under**: it
+resolves pi + jiti from the live `~/.pi/agent/install` tree. That means running the batteries
+requires a machine with pi installed (the developer/CI machine later, not a bare runner):
+`pi` itself must be present. On a machine without pi, the extension still installs and loads
+(the `peerDependencies` are host-provided at load time).
