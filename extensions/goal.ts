@@ -5041,6 +5041,12 @@ if (!match2) { safeNotify(ctx, `No task matching '${truncate(id, 80)}' (show).`,
 						return;
 					}
 											// Capability (587): /goal diary restore - the 586 ring's operator arm. The 583
+					// RESIDUAL (592, cross-process race, accepted): a concurrent diary append in
+					// ANOTHER pi process racing this restore's rename can write into the pre-rename
+					// inode - one in-flight entry lost. Bounded: restore is a rare operator action;
+					// the entry survives in .crashed (if appended before the crash-copy) or the ring
+					// (within the hour); a lock-file would tax every write for this tail risk.
+
 						// incident's only recovery was transcript mining; the ring sits beside every day file.
 						// restore lists slots; restore <slot> recovers with live-preserved-as-.crashed safety.
 						if (rest.trim() === "restore" || rest.trim().startsWith("restore ")) {
@@ -5327,9 +5333,9 @@ if (rest) {
 								return;
 							}
 							if (q371.length === 0) {
-								safeNotify(ctx, "sessions open: no session file matching " + truncate(openArg, 60) + " in this workspace.", "warning");
-								return;
-							}
+								safeNotify(ctx, "sessions open: no session file matching " + truncate(openArg, 60) + " in this workspace.", "warning");
+								return;
+							}
 							// (584, round 86) The printed filename is host-writable; NTFS forbids quotes (breakout
 							// impossible) but $ ` % & pass through and EXPAND in the pasted shell (POSIX $VAR/
 							// backticks, cmd %VAR%). Refuse metachar names - an honest warning beats escaping.
