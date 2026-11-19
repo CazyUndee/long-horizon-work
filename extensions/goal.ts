@@ -4048,6 +4048,19 @@ export default function goalExtension(pi: ExtensionAPI): void {
 				}
 				case "fleet": {
 
+
+					// (583) Hostile-cwd predicate: session-head cwds are hostile-writable; only
+					// local-absolute, UNC-free, dotdot-free, control-free paths proceed (583 gate).
+					const pathIsHostileCwd = (c: string): boolean => {
+						if (c.length > 260) return true;
+						if (c.startsWith("\\") || c.startsWith("//")) return true;
+						if (!path.isAbsolute(c)) return true;
+						if (c.split("/").includes("..")) return true;
+						if (c.split("\\").includes("..")) return true;
+						for (let ci = 0; ci < c.length; ci++) { if (c.charCodeAt(ci) < 32) return true; }
+						return false;
+					};
+
 					// Capability (581): /goal fleet activity [N] - WHAT each loop just did, across all
 					// workspaces, one glance. fleet answers "are they alive"; this answers "what are
 					// they doing right now". Composes two proven readers: the fleet workspace
@@ -4078,6 +4091,8 @@ export default function goalExtension(pi: ExtensionAPI): void {
 									const ageMs581 = Date.now() - st581.mtimeMs;
 									if (ageMs581 > 6 * 3_600_000) continue; // stale: skip, fleet rows carry the STALE tag
 									if (!wsCwd581) continue;
+						if (pathIsHostileCwd(wsCwd581)) continue;
+
 									const entries581 = readAllDiaryEntries(wsCwd581);
 									for (const e581 of entries581.slice(0, per581)) {
 										const ts581 = Date.parse(e581.day + "T" + e581.time + ":00");
