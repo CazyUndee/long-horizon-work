@@ -1,0 +1,6 @@
+extensions/goal.ts -text
+*.ts -text
+*.mjs text
+*.cjs text
+*.md text
+*.json text
