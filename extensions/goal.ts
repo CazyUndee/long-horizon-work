@@ -157,33 +157,39 @@
  * Why an extension and not a prompt template: persistence, re-injection, spawning, file
  * watching and continuation are executable behavior.
  *
- * FILE MAP (updated cycle 552; line anchors drift - grep the banner titles instead):
- *   150-580  Constants, secret scrubbing (SECRET_PATTERNS / scrubSecrets), bounded io
- *            primitives (readTail / readHead / atomicWrite), singleLine / clipField,
- *            yamlSafeLine, withFileMutationQueue, alias guards (inbox/diary/meta/path).
- *   580-1020 Filesystem: task inbox (listTasks / setTaskStatus / readTaskFile - the
- *            single-open bounded task read), diary (entries, digest, search, GRAB_RE
- *            precompiled fields, appendDiaryEntry + torn-tail repair + day-roll heal,
- *            auto-valve >12h archive at >90% window cap, cycle 503/521), daemon.json
- *            helpers, sweepCrashDebris (session-start cleanup).
- *   1500     Daemon bookkeeping: readDaemonInfo/writeDaemonInfo, DAEMON_HOLDER_SOURCE
- *            (the detached holder's JS as string lines), spawnDaemonChild.
- *   1610     DAEMON_HOLDER_SOURCE body; resolvePiCommand (the "run pi again" path).
- *   1914     Prompt texts (single-goal text, loop protocol + rotation + STATE REPORT).
- *   2364     goalExtension factory: hooks, goal + diary tools, /goal command tree -
- *            40 cases. Read-side census (grep 'case "' for truth; highlights):
- *            goal-state (loop/pause/resume/status/cycles/summary/dashboard/health/
- *            doctor/session-doctor), fleet views (workspaces 377, fleet 425 + mandate/staleness 563, fleet activity 581
- *            column 545), diary reads (journal + arch 479, notes 533, uptime 539,
- *            diary archive 455), tasks (task/inbox/ask/btw/defer), suite (suite +
- *            full 269 + gates census 551, cycle-444 exclusion of pt/r batteries).
+ * FILE MAP (updated cycle 588; line anchors drift - grep the banner titles instead):
+ *   ~519     Constants: SECRET_PATTERNS/scrubSecrets; ~586 bounded io (readTail/readHead/
+ *            atomicWrite), singleLine/clipField, yamlSafeLine, withFileMutationQueue,
+ *            alias guards (inbox/diary/meta/path).
+ *   ~1250    Diary core: parseDayText + dayParseCache (231), canonicalDiaryEntry (582 -
+ *            the round-trip contract, single-source), diaryHealth, readAllDiaryEntries.
+ *            Just BELOW: task inbox primitives (listTasks/readTaskFile bounded).
+ *   ~1517    appendDiaryEntry: torn-tail repair, day-roll heal, auto-valve 503/521
+ *            (>12h archive at >90% window) + over-window catch-up (580, 3x-window
+ *            host cap, additive-first, round-trip refusal), backupDayFile586 (the
+ *            bak-0/1/2 hourly ring - restore via /goal diary restore, 587).
+ *   ~1749    Daemon bookkeeping: readDaemonInfo/writeDaemonInfo (belongs-to + terminal
+ *            guards), DAEMON_HOLDER_SOURCE (the detached holder's JS as string lines),
+ *            spawnDaemonChild; ~1846 the holder body; resolvePiCommand.
+ *   ~2203    Prompt texts: loop protocol + rotation + STATE REPORT; buildGoalPrompt
+ *            (the injected mandate+cycle template - the 562 never-park-decision text
+ *            lives here).
+ *   ~2459    goalExtension factory: hooks, goal + diary tools, /goal command tree -
+ *            40 cases (grep 'case "' for truth). Highlights: goal-state (loop/pause/
+ *            resume/status/cycles/summary/dashboard/health/doctor/session-doctor),
+ *            fleet views (workspaces 377, fleet 425 + mandate 545/staleness 563,
+ *            fleet activity 581 with pathIsHostileCwd gate 583), diary reads (journal +
+ *            arch 479, notes 533, uptime 539, diary archive 455, diary restore 587),
+ *            tasks (task/inbox/ask/btw/defer), suite (full 269 + gates census 551; the
+ *            444 pt/r exclusion), sessions open (371, metachar refusal 584).
  *            Continuation engine (agent_before_settle), hostNotify (bell + OSC 777,
- *            C0-sanitized), inbox watcher (error-disarmed), daemon supervisor,
- *            status ticker. Module caches: diary digest (version-keyed),
- *            dayParseCache (231), taskCountCache 15s TTL + known-delta adjust,
- *            probePiResolution (237), restoreBriefing one-shot.
- *            Diary tool: action-write/search/amend (449); diary-keyed caps re-proved
- *            per reader; kinds work|audit|decision|verification|incident|blocked.
+ *            C0-sanitized), inbox watcher (error-disarmed), daemon supervisor, status
+ *            ticker. Caches: diary digest (version-keyed), dayParseCache (231),
+ *            taskCountCache 15s TTL + known-delta adjust, probePiResolution (237).
+ *            Diary tool: write/search/amend (449); kinds work|audit|decision|
+ *            verification|incident|blocked. Exported for the suite: spawnSafePath is
+ *            NOT here (session-fleet.ts); goal.ts exports none - the suite imports the
+ *            module default and drives registerTool/registerCommand like pi does.
  */
 
 import type {
