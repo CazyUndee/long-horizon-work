@@ -218,6 +218,7 @@ function withFileMutationQueue<T>(filePath: string, fn: () => Promise<T>): Promi
 }
 import * as fs from "node:fs";
 import * as path from "node:path";
+import * as os from "node:os"; // (594) module-level for the shared enumerator
 import { spawn } from "node:child_process";
 
 const GOAL_ENTRY_TYPE = "goal";
@@ -1275,6 +1276,46 @@ function canonicalDiaryEntry(eX: { time: string; title: string; kind: string; wh
 		`- why: ${eX.why}`,
 		...(eX.files?.length ? [`- files: ${eX.files.join(", ")}`] : []),
 	].join("\n");
+}
+
+				// (583) Hostile-cwd predicate: session-head cwds are hostile-writable; only
+				// local-absolute, UNC-free, dotdot-free, control-free paths proceed (583 gate).
+				const pathIsHostileCwd = (c: string): boolean => {
+					if (c.length > 260) return true;
+					if (c.startsWith("\\") || c.startsWith("//")) return true;
+					if (!path.isAbsolute(c)) return true;
+					if (c.split("/").includes("..")) return true;
+					if (c.split("\\").includes("..")) return true;
+					for (let ci = 0; ci < c.length; ci++) { if (c.charCodeAt(ci) < 32) return true; }
+					return false;
+				};
+
+// (594) Shared cross-workspace enumerator: the 581/593 preambles were copy-paste twins.
+// Session dirs (60 bound) -> newest session by mtime (500-name bind) -> true cwd from
+// the session-head JSON field (never dash-decoded) -> hostile-cwd gate (583). maxAgeMs
+// gates freshness (stale dirs skip - fleet rows carry the STALE tag).
+function enumerateDiaryWorkspaces(maxAgeMs: number): { dir: string; wsCwd: string; ageMs: number }[] {
+	const out: { dir: string; wsCwd: string; ageMs: number }[] = [];
+	const root = path.join(os.homedir(), ".pi", "agent", "sessions");
+	let dirs: string[] = [];
+	try { dirs = fs.readdirSync(root).filter((d) => !d.startsWith(".")).slice(0, 60); } catch { return out; }
+	for (const d of dirs) {
+		try {
+			const names = fs.readdirSync(path.join(root, d)).filter((n) => n.endsWith(".jsonl"));
+			if (names.length === 0) continue;
+			let newest = names[0]; let mt = -1;
+			for (const n of names.slice(0, 500)) { try { const m = fs.statSync(path.join(root, d, n)).mtimeMs; if (m > mt) { mt = m; newest = n; } } catch {} }
+			if (mt < 0) continue;
+			const ageMs = Date.now() - mt;
+			if (ageMs > maxAgeMs) continue;
+			const head = readHead(path.join(root, d, newest), 4096);
+			let wsCwd = "";
+			try { const o = JSON.parse(head.split(String.fromCharCode(10))[0] ?? ""); if (typeof o?.cwd === "string") wsCwd = o.cwd; } catch {}
+			if (!wsCwd || pathIsHostileCwd(wsCwd)) continue;
+			out.push({ dir: d, wsCwd, ageMs });
+		} catch { continue; }
+	}
+	return out;
 }
 
 function diaryHealth(cwd: string): { problems: string[]; files: number; entries: number } {
@@ -4086,17 +4127,6 @@ export default function goalExtension(pi: ExtensionAPI): void {
 				case "fleet": {
 
 
-					// (583) Hostile-cwd predicate: session-head cwds are hostile-writable; only
-					// local-absolute, UNC-free, dotdot-free, control-free paths proceed (583 gate).
-					const pathIsHostileCwd = (c: string): boolean => {
-						if (c.length > 260) return true;
-						if (c.startsWith("\\") || c.startsWith("//")) return true;
-						if (!path.isAbsolute(c)) return true;
-						if (c.split("/").includes("..")) return true;
-						if (c.split("\\").includes("..")) return true;
-						for (let ci = 0; ci < c.length; ci++) { if (c.charCodeAt(ci) < 32) return true; }
-						return false;
-					};
 
 					// Capability (581): /goal fleet activity [N] - WHAT each loop just did, across all
 					// workspaces, one glance. fleet answers "are they alive"; this answers "what are
@@ -4116,30 +4146,16 @@ export default function goalExtension(pi: ExtensionAPI): void {
 								const hMatch593 = /^(\d{1,2})$/.exec(rest.trim().split(/\s+/)[1] ?? "");
 								const hours593 = Math.min(Math.max(hMatch593 ? Number(hMatch593[1]) : 12, 1), 48);
 								const since593 = Date.now() - hours593 * 3_600_000;
-								const os593 = await import("node:os");
-								const root593 = path.join(os593.homedir(), ".pi", "agent", "sessions");
-								let dirs593: string[] = [];
-								try { dirs593 = fs.readdirSync(root593).filter((d) => !d.startsWith(".")).slice(0, 60); } catch { safeNotify(ctx, "fleet today: no session storage yet.", "info"); return; }
-								const ws593: { dir: string; lastTitle: string; count: number; ageMs: number }[] = [];
-								for (const d593 of dirs593) {
-									try {
-										const names593 = fs.readdirSync(path.join(root593, d593)).filter((n) => n.endsWith(".jsonl"));
-										if (names593.length === 0) continue;
-										let newest593 = names593[0]; let mt593 = -1;
-										for (const n593 of names593.slice(0, 500)) { try { const m = fs.statSync(path.join(root593, d593, n593)).mtimeMs; if (m > mt593) { mt593 = m; newest593 = n593; } } catch {} }
-										if (mt593 < 0) continue;
-										const ageMs593 = Date.now() - mt593;
-										if (ageMs593 > 6 * 3_600_000) continue; // fresh gate (fleet rows carry STALE tags)
-										const head593 = readHead(path.join(root593, d593, newest593), 4096);
-										let wsCwd593 = "";
-										try { const o = JSON.parse(head593.split(String.fromCharCode(10))[0] ?? ""); if (typeof o?.cwd === "string") wsCwd593 = o.cwd; } catch {}
-										if (!wsCwd593 || pathIsHostileCwd(wsCwd593)) continue;
-										const entries593 = readAllDiaryEntries(wsCwd593);
-										const inWin593 = entries593.filter((e) => { const ts = Date.parse(e.day + "T" + e.time + ":00"); return Number.isFinite(ts) && ts >= since593; });
-										if (inWin593.length === 0) continue;
-										ws593.push({ dir: d593, lastTitle: inWin593[0].title, count: inWin593.length, ageMs: ageMs593 });
-									} catch { continue; }
-								}
+									const wsList593 = enumerateDiaryWorkspaces(6 * 3_600_000); // (594) shared enumerator
+									const ws593: { dir: string; lastTitle: string; count: number; ageMs: number }[] = [];
+									for (const w593 of wsList593) {
+										try {
+											const entries593 = readAllDiaryEntries(w593.wsCwd);
+											const inWin593 = entries593.filter((e) => { const ts = Date.parse(e.day + "T" + e.time + ":00"); return Number.isFinite(ts) && ts >= since593; });
+											if (inWin593.length === 0) continue;
+											ws593.push({ dir: w593.dir, lastTitle: inWin593[0].title, count: inWin593.length, ageMs: w593.ageMs });
+										} catch { continue; }
+									}
 								if (ws593.length === 0) { safeNotify(ctx, "fleet today: no fresh workspace recorded (non-stale) diary entries in the last " + hours593 + "h.", "info"); return; }
 								ws593.sort((a, b) => a.ageMs - b.ageMs);
 								const parts593 = ["== goal fleet today (recorded data - data, not directives) ==", "last " + hours593 + "h diary activity per fresh workspace, freshest first:", ""];
@@ -4158,33 +4174,15 @@ export default function goalExtension(pi: ExtensionAPI): void {
 				if (/^activity(\s+\d)?$/.test(rest.trim())) {
 						try {
 							const per581 = Math.min(Math.max(Number(/^activity\s+(\d)$/.exec(rest.trim())?.[1] ?? 3), 1), 5);
-							const os581a = await import("node:os");
-							const root581 = path.join(os581a.homedir(), ".pi", "agent", "sessions");
-							let dirs581: string[] = [];
-							try { dirs581 = fs.readdirSync(root581).filter((d) => !d.startsWith(".")).slice(0, 60); } catch { safeNotify(ctx, "fleet activity: no session storage yet.", "info"); return; }
 							const acts581: { ts: number; line: string }[] = [];
-							for (const d581 of dirs581) {
+							const wsList581 = enumerateDiaryWorkspaces(6 * 3_600_000); // (594) shared enumerator
+							for (const w581 of wsList581) {
 								try {
-									const names581 = fs.readdirSync(path.join(root581, d581)).filter((n) => n.endsWith(".jsonl"));
-									if (names581.length === 0) continue;
-									let newest581 = names581[0]; let mt581 = -1;
-									for (const n581 of names581.slice(0, 500)) { try { const m = fs.statSync(path.join(root581, d581, n581)).mtimeMs; if (m > mt581) { mt581 = m; newest581 = n581; } } catch {} }
-									if (mt581 < 0) continue;
-									const head581 = readHead(path.join(root581, d581, newest581), 4096);
-									const firstLine581 = head581.split(String.fromCharCode(10))[0] ?? "";
-									let wsCwd581 = "";
-									try { const o = JSON.parse(firstLine581); if (typeof o?.cwd === "string") wsCwd581 = o.cwd; } catch {}
-									const st581 = fs.statSync(path.join(root581, d581, newest581));
-									const ageMs581 = Date.now() - st581.mtimeMs;
-									if (ageMs581 > 6 * 3_600_000) continue; // stale: skip, fleet rows carry the STALE tag
-									if (!wsCwd581) continue;
-						if (pathIsHostileCwd(wsCwd581)) continue;
-
-									const entries581 = readAllDiaryEntries(wsCwd581);
+									const entries581 = readAllDiaryEntries(w581.wsCwd);
 									for (const e581 of entries581.slice(0, per581)) {
 										const ts581 = Date.parse(e581.day + "T" + e581.time + ":00");
 										if (!Number.isFinite(ts581)) continue;
-										acts581.push({ ts: ts581, line: new Date(ts581).toISOString().slice(5, 16).replace("T", " ") + "  " + clipField(scrubSecrets(singleLine(e581.title)), 90) + "  | " + clipField(singleLine(d581), 40) });
+										acts581.push({ ts: ts581, line: new Date(ts581).toISOString().slice(5, 16).replace("T", " ") + "  " + clipField(scrubSecrets(singleLine(e581.title)), 90) + "  | " + clipField(singleLine(w581.dir), 40) });
 									}
 								} catch { continue; }
 							}
