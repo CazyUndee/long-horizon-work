@@ -1253,6 +1253,22 @@ function readAllDiaryEntries(cwd: string): DiaryEntryFull[] {
 	return entries;
 }
 
+/** Shared diary-entry canonicalizer (582): the exact line-shape parseDayText round-trips.
+ * Was triplicated as inline lambdas in the 455 archive command, the 503 valve and the 580
+ * catch-up - three copies meant three drift risks against the round-trip-refusal contract.
+ * NOTE: NOT related to the kind-normalizer `canon` in appendDiaryEntry (that one maps kind
+ * strings onto DIARY_KINDS and keeps its name). */
+function canonicalDiaryEntry(eX: { time: string; title: string; kind: string; what: string; how: string; why: string; files?: string[] }): string {
+	return [
+		`## ${eX.time} — ${eX.title}`,
+		`- kind: ${eX.kind}`,
+		`- what: ${eX.what}`,
+		`- how: ${eX.how}`,
+		`- why: ${eX.why}`,
+		...(eX.files?.length ? [`- files: ${eX.files.join(", ")}`] : []),
+	].join("\n");
+}
+
 function diaryHealth(cwd: string): { problems: string[]; files: number; entries: number } {
 	const problems: string[] = [];
 	let files = 0;
@@ -1595,20 +1611,13 @@ function appendDiaryEntry(
 					}
 					if (moveCv.length > 0 && keepCv.length > 0) {
 						const archCv = path.join(diaryDir(cwd), "archive-" + dayNoExtAv + ".md");
-						const canonCv = (eX: (typeof entriesCv)[number]) => [
-							"## " + eX.time + " — " + eX.title,
-							"- kind: " + eX.kind,
-							"- what: " + eX.what,
-							"- how: " + eX.how,
-							"- why: " + eX.why,
-							...(eX.files?.length ? ["- files: " + eX.files.join(", ")] : []),
-						].join("\n");
-						const archNewCv = moveCv.map(canonCv).join("\n\n") + "\n";
+						// (582) canonicalizer deduplicated into canonicalDiaryEntry()
+						const archNewCv = moveCv.map(canonicalDiaryEntry).join("\n\n") + "\n";
 						let archCombCv: string | undefined;
 						try { const prevResCv = readTail(archCv, MAX_DIARY_FILE_BYTES); const prevCv = prevResCv.text ?? ""; archCombCv = prevCv.trim().length > 0 ? prevCv + "\n" + archNewCv : archNewCv; } catch { archCombCv = archNewCv; }
 						if (parseDayText(archCombCv, dayNoExtAv).length >= moveCv.length) {
 							atomicWrite(archCv, archCombCv);
-							const keptCv = "# Diary\n\n" + keepCv.map(canonCv).join("\n\n") + "\n";
+							const keptCv = "# Diary\n\n" + keepCv.map(canonicalDiaryEntry).join("\n\n") + "\n";
 							const reKeepCv = parseDayText(keptCv, dayNoExtAv);
 							if (reKeepCv.length === keepCv.length) {
 								atomicWrite(filePath, keptCv);
@@ -1639,15 +1648,8 @@ function appendDiaryEntry(
 						// still work - only past 100% does the 453 refusal stand. Recorded as the
 						// designed residual: no counter-action warranted at observed write rates.
 					if (moveAv.length > 0 && keepAv.length > 0) {
-						const canonAv = (eX: (typeof entriesAv)[number]) => [
-							`## ${eX.time} — ${eX.title}`,
-							`- kind: ${eX.kind}`,
-							`- what: ${eX.what}`,
-							`- how: ${eX.how}`,
-							`- why: ${eX.why}`,
-							...(eX.files?.length ? [`- files: ${eX.files.join(", ")}`] : []),
-						].join("\n");
-						const keptAv = `${(readAv.text.split(/\r?\n/, 2)[0] ?? "# Diary").replace(/\s*$/, "")}\n\n${keepAv.map(canonAv).join("\n\n")}\n`;
+						// (582) canonicalizer deduplicated into canonicalDiaryEntry()
+						const keptAv = `${(readAv.text.split(/\r?\n/, 2)[0] ?? "# Diary").replace(/\s*$/, "")}\n\n${keepAv.map(canonicalDiaryEntry).join("\n\n")}\n`;
 						const reKeepAv = parseDayText(keptAv, dayNoExtAv);
 						let okAv = reKeepAv.length === keepAv.length;
 						if (okAv) {
@@ -1658,7 +1660,7 @@ function appendDiaryEntry(
 						}
 						if (okAv) {
 							const archAv = path.join(diaryDir(cwd), dayNoExtAv + ".archived.md");
-							const archNewAv = moveAv.map(canonAv).join("\n\n") + "\n";
+							const archNewAv = moveAv.map(canonicalDiaryEntry).join("\n\n") + "\n";
 							let archCombAv: string | undefined;
 														// (523) Bounded merge: the pre-archive can itself grow past the window across months - readTail doctrine.
 							try { const prevResAv = readTail(archAv, MAX_DIARY_FILE_BYTES); const prevAv = prevResAv.text ?? ""; archCombAv = prevAv.trim().length > 0 ? prevAv + "\n" + archNewAv : archNewAv; } catch { archCombAv = archNewAv; }							if (parseDayText(archCombAv, dayNoExtAv).length >= moveAv.length) {
@@ -4932,16 +4934,9 @@ if (!match2) { safeNotify(ctx, `No task matching '${truncate(id, 80)}' (show).`,
 								}
 									if (moveA.length === 0) continue; // nothing to move
 									if (keepA.length === 0) { reportA.push("skipped " + dayA + ": all " + moveA.length + " entries are older - a fully-old day stays intact (readers already scope past it)."); continue; } // archives are for PARTIAL relief (457: report, not silent)
-								const canon = (eX: (typeof entriesA)[number]) => [
-									`## ${eX.time} — ${eX.title}`,
-									`- kind: ${eX.kind}`,
-									`- what: ${eX.what}`,
-									`- how: ${eX.how}`,
-									`- why: ${eX.why}`,
-									...(eX.files?.length ? [`- files: ${eX.files.join(", ")}`] : []),
-								].join("\n");
+								// (582) canonicalizer deduplicated into canonicalDiaryEntry()
 								const headerA = (readA.text.split(/\r?\n/, 2)[0] ?? "# Diary").replace(/\s*$/, "");
-								const keptTextA = `${headerA}\n\n${keepA.map(canon).join("\n\n")}\n`;
+								const keptTextA = `${headerA}\n\n${keepA.map(canonicalDiaryEntry).join("\n\n")}\n`;
 								// round-trip both sides:
 								const reKeepA = parseDayText(keptTextA, dayNoExtA);
 								let okA = reKeepA.length === keepA.length;
@@ -4954,7 +4949,7 @@ if (!match2) { safeNotify(ctx, `No task matching '${truncate(id, 80)}' (show).`,
 								}
 								if (!okA) { reportA.push("skipped " + dayA + ": rebuild round-trip failed for the kept set."); continue; }
 								const archPathA = path.join(diaryDir(cwd), dayNoExtA + ".archived.md");
-								const archNewA = moveA.map(canon).join("\n\n") + "\n";
+								const archNewA = moveA.map(canonicalDiaryEntry).join("\n\n") + "\n";
 								let archCombinedA: string | undefined;
 								try {
 									const prevA = fs.existsSync(archPathA) ? fs.readFileSync(archPathA, "utf8") : "";
