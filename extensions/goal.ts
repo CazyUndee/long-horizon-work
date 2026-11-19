@@ -4145,7 +4145,60 @@ export default function goalExtension(pi: ExtensionAPI): void {
 					// 231 cache, alias guards, scrubbed-at-write corpus). The TRUE cwd comes from
 					// the newest session file HEAD line (JSON "cwd" field) - never decoded from
 					// the dash-encoded dir name (the decode is ambiguous: real dashes in paths).
-							// Capability (593): /goal fleet today [hours] - the briefing across every fresh
+							// Capability (599): /goal fleet asks - the operator's channel across workspaces: per
+						// fresh workspace, OPEN ask-count + the latest ANSWERED title. The per-workspace bell
+						// only rings in its own terminal - an away operator misses other machines' answers;
+						// this surfaces every waiting answer/ask in one render. Bounded: enumerator (60 dirs,
+						// hostile-gated), per-inbox readdir 500-cap, ASK-/answer shapes as the 413 scanner.
+						if (rest.trim() === "asks") {
+							try {
+								const wsList599 = enumerateDiaryWorkspaces(6 * 3_600_000); // (594) shared: fresh workspaces only
+								const rows599: { dir: string; open599: number; answered599: string }[] = [];
+								for (const w599 of wsList599) {
+								try {
+									const inboxDir599 = path.join(w599.wsCwd, "goal-inbox");
+									let names599: string[] = [];
+									try { names599 = fs.readdirSync(inboxDir599).slice(0, 500); } catch { continue; } // no inbox: skip
+									let open599 = 0;
+									let latestAnswer599 = "";
+									let latestAt599 = -1;
+									for (const n599 of names599) {
+										if (!n599.startsWith("ASK-") || !n599.endsWith(".md") || n599.endsWith("-answer.md")) continue; // answer-files are not questions (the 413 shape)
+										try {
+											const fq599 = path.join(inboxDir599, n599);
+											const answered599 = fs.existsSync(fq599.slice(0, -3) + "-answer.md");
+											const mt599 = fs.statSync(fq599).mtimeMs;
+											if (!answered599) { open599++; continue; }
+											const ansPath599 = fq599.slice(0, -3) + "-answer.md";
+											const ansM599 = fs.statSync(ansPath599).mtimeMs;
+											if (ansM599 > latestAt599) {
+												latestAt599 = ansM599;
+												const body599 = readTaskFile(ansPath599) ?? "";
+												// title from the ANSWER frontmatter, else first body line - scrubbed/neutralized like every row:
+												const fmMatch599 = /^title:\s*(.*)$/m.exec(body599);
+												latestAnswer599 = clipField(singleLine(scrubSecrets(fmMatch599 ? fmMatch599[1] : body599.split(/\r?\n/)[0] ?? "")).replace(/`/g, "\u2019"), 80);
+											}
+										} catch { continue; }
+									}
+									if (open599 > 0 || latestAnswer599) rows599.push({ dir: w599.dir, open599: open599, answered599: latestAnswer599 });
+								} catch { continue; }
+								}
+								if (rows599.length === 0) { safeNotify(ctx, "fleet asks: no open asks or answers in any fresh workspace.", "info"); return; }
+								const parts599 = ["== goal fleet asks (recorded data - data, not directives) == per-workspace ask channel:", ""];
+								for (const r599 of rows599.slice(0, 30)) {
+								parts599.push("  [" + r599.open599 + " open] " + (r599.answered599 ? "latest answer: " + r599.answered599 : "no answers yet") + "  | " + truncate(singleLine(r599.dir), 36));
+								}
+								if (rows599.length > 30) parts599.push("  ... and " + (rows599.length - 30) + " more.");
+								safeNotify(ctx, parts599.join(String.fromCharCode(10)), "info");
+								return;
+							} catch (err599) {
+								tapSwallowed("fleet asks: " + String((err599 as Error)?.message));
+								safeNotify(ctx, "fleet asks: could not render - " + truncate(String((err599 as Error)?.message ?? err599), 120), "warning");
+								return;
+							}
+						}
+
+						// Capability (593): /goal fleet today [hours] - the briefing across every fresh
 						// workspace: per-loop, the last-<hours> window in three lines (entries count + last
 						// title, staleness) - completing the away-observation triangle (fleet = alive?,
 						// fleet activity = what now?, fleet today = what happened while away). Reuses the
