@@ -5,6 +5,22 @@ hours to days without an operator — persistent goals and autonomous improvemen
 diary memory, cross-session memory, a host task inbox, detached fleets of agent workers,
 long-running job control, and speed telemetry.
 
+## Quickstart
+
+After `pi install`, just talk to pi - or use the slash commands:
+
+```
+/goal loop continuously improve my codebase - one verified improvement per cycle
+```
+
+That's it: the goal survives compaction and restarts; the loop records a diary
+entry every cycle, hands you host-tasks in `~/goal-inbox/` (bell + OSC 777
+notifications), and never self-stops - pause it with `/goal pause`, check it
+with `/goal status`, see all workspaces at once with `/goal fleet`, and get the
+morning briefing with `/goal today`.
+
+Single-shot goals work too: `/goal refactor the auth module and add tests`.
+
 ## What's inside
 
 Five extensions, one package:
