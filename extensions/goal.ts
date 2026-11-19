@@ -1760,11 +1760,14 @@ function backupDayFile586(filePath: string): void {
 			if (same) { same = fs.readFileSync(bak0).toString("utf8") === fs.readFileSync(filePath).toString("utf8"); }
 		} catch { same = false; }
 		if (same) return;
-		// Rotate: a crash mid-rotate loses the OLDEST ring slot only (bak-0 always readable).
-		for (let n586 = 2; n586 >= 1; n586--) {
-			try { fs.renameSync(filePath + ".bak-" + String(n586 - 1), filePath + ".bak-" + String(n586)); } catch { /* slot absent: skip */ }
-		}
-		try { fs.copyFileSync(filePath, bak0); } catch { /* best-effort */ }
+		// (598) Crash-safe rotate: copy to a TEMP slot FIRST; every rename step then loses at
+		// most the oldest slot, never two (the old order destroyed bak-1's ancestor on a
+		// mid-rotate crash: delete bak-0 -> next run shifted bak-1->bak-2 twice-removed).
+		const tmp586 = filePath + ".bak-new";
+		try { fs.copyFileSync(filePath, tmp586); } catch { return; }
+		try { fs.renameSync(filePath + ".bak-1", filePath + ".bak-2"); } catch {}
+		try { fs.renameSync(bak0, filePath + ".bak-1"); } catch {}
+		try { fs.renameSync(tmp586, bak0); } catch { try { fs.rmSync(tmp586, { force: true }); } catch {} }
 		// Rotate the mtime forward so the next hour is free:
 	} catch { /* never break the write path */ }
 }
