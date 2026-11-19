@@ -924,8 +924,8 @@ function listTasks(cwd: string): TaskInfo[] {
 				}
 			}
 			tasks.push({
-				id: fm.id ?? name.replace(/\.md$/, ""),
-				title: fm.title ?? name,
+				id: (fm.id ?? name.replace(/\.md$/, "")).replace(/[$`%&|;<>^"']/g, ""), // (590, r87) 584-class scrub: ids are copy-paste targets - expansion metachars never legitimately appear in generated ids
+				title: (fm.title ?? name).replace(/[$`%&|;<>^"']/g, ""), // (590, r87) same scrub: the no-frontmatter title fallback is the raw filename (host-writable name, 584 class)
 				priority: fm.priority ?? "medium",
 				status: fm.status ?? "open",
 				created: fm.created ?? "",
