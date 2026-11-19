@@ -1209,12 +1209,15 @@ function parseDayText(text: string, day: string): DiaryEntryFull[] {
 	return out;
 }
 
-function readAllDiaryEntries(cwd: string): DiaryEntryFull[] {
+function readAllDiaryEntries(cwd: string, sinceDay597?: string): DiaryEntryFull[] {
+	// (597) Perf: optional day-bound - fleet views pass their hour-window's day floor
+	// (day files are DAY-NAMED: a string compare, not a parse). Callers omitting it
+	// read everything; no parallel parse path, no drift (the 582/594 doctrine).
 	// Aliased diary dir: refuse to read or digest victim files through a planted link.
 	if (diaryIsAliased(cwd)) return [];
 	let names: string[];
 	try {
-		names = fs.readdirSync(diaryDir(cwd)).filter((n) => DAY_FILE_RE.test(n));
+		names = fs.readdirSync(diaryDir(cwd)).filter((n) => DAY_FILE_RE.test(n)).filter((n) => !sinceDay597 || n >= sinceDay597 + ".md");
 	} catch (err) {
 		tapSwallowed("readAllDiaryEntries: " + String((err as Error)?.message));
 		return [];
@@ -4154,7 +4157,8 @@ export default function goalExtension(pi: ExtensionAPI): void {
 									const ws593: { dir: string; lastTitle: string; count: number; ageMs: number }[] = [];
 									for (const w593 of wsList593) {
 										try {
-											const entries593 = readAllDiaryEntries(w593.wsCwd);
+											const boundDay597 = new Date(Date.now() - (hours593 + 24) * 3_600_000).toISOString().slice(0, 10); // window + a day of slack (day files are whole-day)
+									const entries593 = readAllDiaryEntries(w593.wsCwd, boundDay597);
 											const inWin593 = entries593.filter((e) => { const ts = Date.parse(e.day + "T" + e.time + ":00"); return Number.isFinite(ts) && ts >= since593; });
 											if (inWin593.length === 0) continue;
 											ws593.push({ dir: w593.dir, lastTitle: inWin593[0].title, count: inWin593.length, ageMs: w593.ageMs });
