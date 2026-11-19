@@ -5244,7 +5244,14 @@ if (!match2) { safeNotify(ctx, `No task matching '${truncate(id, 80)}' (show).`,
 								return;
 							}
 							if (q371.length === 0) {
-								safeNotify(ctx, "sessions open: no session file matching " + truncate(openArg, 60) + " in this workspace.", "warning");
+								safeNotify(ctx, "sessions open: no session file matching " + truncate(openArg, 60) + " in this workspace.", "warning");
+								return;
+							}
+							// (584, round 86) The printed filename is host-writable; NTFS forbids quotes (breakout
+							// impossible) but $ ` % & pass through and EXPAND in the pasted shell (POSIX $VAR/
+							// backticks, cmd %VAR%). Refuse metachar names - an honest warning beats escaping.
+							if (/[$`%&<>|^]/.test(q371[0])) {
+								safeNotify(ctx, "sessions open: refused - the matched session file name carries shell metacharacters (" + truncate(q371[0], 60) + "). A file-toucher planted it; rename or delete the file before opening.", "warning");
 								return;
 							}
 							const launch = "pi --session " + String.fromCharCode(34) + path.join(projDir371, scrubSecrets(q371[0])) + String.fromCharCode(34);
