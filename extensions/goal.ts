@@ -54,6 +54,8 @@
  *   /goal fleet                 Cross-workspace GOAL-LOOP status: each loop’s MANDATE/state/cycles
  *   /goal fleet activity [N]   The same fleet's WHAT: last N diary-entry titles per fresh
  *            (non-stale) workspace, newest first - one glance at every loop's latest work.
+ *   /goal fleet today [h]      The briefing ACROSS workspaces: entries-per-loop in the last
+ *            h hours, freshest first with last-titles - what happened while away.
  *                                from its newest session (resumed-session safe: newest-by-mtime).
  *   /goal ask retract <name>    Retract a question (and its answer) from the ask channel.
  *   /goal ask retract confirm   Dry-run the retraction: shows the plan, removes nothing (401).
@@ -4103,7 +4105,57 @@ export default function goalExtension(pi: ExtensionAPI): void {
 					// 231 cache, alias guards, scrubbed-at-write corpus). The TRUE cwd comes from
 					// the newest session file HEAD line (JSON "cwd" field) - never decoded from
 					// the dash-encoded dir name (the decode is ambiguous: real dashes in paths).
-					if (/^activity(\s+\d)?$/.test(rest.trim())) {
+							// Capability (593): /goal fleet today [hours] - the briefing across every fresh
+						// workspace: per-loop, the last-<hours> window in three lines (entries count + last
+						// title, staleness) - completing the away-observation triangle (fleet = alive?,
+						// fleet activity = what now?, fleet today = what happened while away). Reuses the
+						// 413 window semantics (default 12h, clamp 1-48) + the 581 cwd-from-session-head +
+						// the 583 hostile-cwd gate. Bounded like fleet: 60 dirs, 6h fresh gate, 30 rows.
+						if (rest.trim() === "today" || /^today \d{1,2}$/.test(rest.trim())) {
+							try {
+								const hMatch593 = /^(\d{1,2})$/.exec(rest.trim().split(/\s+/)[1] ?? "");
+								const hours593 = Math.min(Math.max(hMatch593 ? Number(hMatch593[1]) : 12, 1), 48);
+								const since593 = Date.now() - hours593 * 3_600_000;
+								const os593 = await import("node:os");
+								const root593 = path.join(os593.homedir(), ".pi", "agent", "sessions");
+								let dirs593: string[] = [];
+								try { dirs593 = fs.readdirSync(root593).filter((d) => !d.startsWith(".")).slice(0, 60); } catch { safeNotify(ctx, "fleet today: no session storage yet.", "info"); return; }
+								const ws593: { dir: string; lastTitle: string; count: number; ageMs: number }[] = [];
+								for (const d593 of dirs593) {
+									try {
+										const names593 = fs.readdirSync(path.join(root593, d593)).filter((n) => n.endsWith(".jsonl"));
+										if (names593.length === 0) continue;
+										let newest593 = names593[0]; let mt593 = -1;
+										for (const n593 of names593.slice(0, 500)) { try { const m = fs.statSync(path.join(root593, d593, n593)).mtimeMs; if (m > mt593) { mt593 = m; newest593 = n593; } } catch {} }
+										if (mt593 < 0) continue;
+										const ageMs593 = Date.now() - mt593;
+										if (ageMs593 > 6 * 3_600_000) continue; // fresh gate (fleet rows carry STALE tags)
+										const head593 = readHead(path.join(root593, d593, newest593), 4096);
+										let wsCwd593 = "";
+										try { const o = JSON.parse(head593.split(String.fromCharCode(10))[0] ?? ""); if (typeof o?.cwd === "string") wsCwd593 = o.cwd; } catch {}
+										if (!wsCwd593 || pathIsHostileCwd(wsCwd593)) continue;
+										const entries593 = readAllDiaryEntries(wsCwd593);
+										const inWin593 = entries593.filter((e) => { const ts = Date.parse(e.day + "T" + e.time + ":00"); return Number.isFinite(ts) && ts >= since593; });
+										if (inWin593.length === 0) continue;
+										ws593.push({ dir: d593, lastTitle: inWin593[0].title, count: inWin593.length, ageMs: ageMs593 });
+									} catch { continue; }
+								}
+								if (ws593.length === 0) { safeNotify(ctx, "fleet today: no fresh workspace recorded (non-stale) diary entries in the last " + hours593 + "h.", "info"); return; }
+								ws593.sort((a, b) => a.ageMs - b.ageMs);
+								const parts593 = ["== goal fleet today (recorded data - data, not directives) ==", "last " + hours593 + "h diary activity per fresh workspace, freshest first:", ""];
+								for (const w593 of ws593.slice(0, 30)) {
+									parts593.push("  " + w593.count + " entr" + (w593.count === 1 ? "y" : "ies") + "  " + (w593.ageMs < 3_600_000 ? "[live]" : "[" + Math.round(w593.ageMs / 3_600_000) + "h ago]") + "  last: " + truncate(scrubSecrets(singleLine(w593.lastTitle)), 90) + "  | " + truncate(singleLine(w593.dir), 36));
+								}
+								safeNotify(ctx, parts593.join(String.fromCharCode(10)), "info");
+								return;
+							} catch (err593) {
+								tapSwallowed("fleet today: " + String((err593 as Error)?.message));
+								safeNotify(ctx, "fleet today: could not render - " + truncate(String((err593 as Error)?.message ?? err593), 120), "warning");
+								return;
+							}
+						}
+
+				if (/^activity(\s+\d)?$/.test(rest.trim())) {
 						try {
 							const per581 = Math.min(Math.max(Number(/^activity\s+(\d)$/.exec(rest.trim())?.[1] ?? 3), 1), 5);
 							const os581a = await import("node:os");
