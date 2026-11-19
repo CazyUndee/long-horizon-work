@@ -874,6 +874,9 @@ function writeTaskFile(
 
 /** Bounded single-open task read: open + fstat + read in one fd handle, capped at
  * MAX_TASK_FILE_BYTES. Returns undefined when the file cannot be opened at all. */
+// (601) Hardened bounded read: hostile shapes (a directory named *.md, an unreadable ACL,
+// a mid-read device change) degrade to undefined for THIS file - never throw out and lose
+// the whole listing that called it. Tap so the degradation is observable (522 doctrine).
 function readTaskFile(filePath: string): string | undefined {
 	let fd: number;
 	try {
@@ -883,12 +886,16 @@ function readTaskFile(filePath: string): string | undefined {
 	}
 	try {
 		const st = fs.fstatSync(fd);
+		if (!st.isFile()) return undefined;
 		const len = Math.min(st.size, MAX_TASK_FILE_BYTES);
 		const buf = Buffer.allocUnsafe(len);
 		const read = fs.readSync(fd, buf, 0, len, 0);
 		return buf.subarray(0, read).toString("utf8");
+	} catch (err601) {
+		tapSwallowed("readTaskFile: " + String((err601 as Error)?.message));
+		return undefined;
 	} finally {
-		fs.closeSync(fd);
+		try { fs.closeSync(fd); } catch {}
 	}
 }
 
@@ -907,6 +914,9 @@ function listTasks(cwd: string): TaskInfo[] {
 	for (const name of names.filter((n) => n.endsWith(".md")).sort().reverse()) {
 		const filePath = path.join(tasksDir(cwd), name);
 		try {
+			// (601, the 374 doctrine) directories named *.md must not list as task rows;
+			// unreadable entries skip (the whole row set survives either way).
+			if (!fs.statSync(filePath).isFile()) continue;
 			// Bounded read, single-open shape (A/B remeasured 2026-11-16, 500-task inbox,
 		// Windows): open+fstat+read with a MAX_TASK_FILE_BYTES cap. A hostile or host-
 		// dropped 200MB .md used to stall every list at 1.35s (whole-file readFileSync with
@@ -4169,7 +4179,7 @@ export default function goalExtension(pi: ExtensionAPI): void {
 										if (!n599.startsWith("ASK-") || !n599.endsWith(".md") || n599.endsWith("-answer.md")) continue; // answer-files are not questions (the 413 shape)
 										try {
 											const fq599 = path.join(inboxDir599, n599);
-											const answered599 = fs.existsSync(fq599.slice(0, -3) + "-answer.md");
+											const answered599 = (() => { try { return fs.statSync(fq599.slice(0, -3) + "-answer.md").isFile(); } catch { return false; } })(); // (601) a directory named -answer.md is not an answer
 											const mt599 = fs.statSync(fq599).mtimeMs;
 											if (!answered599) { open599++; continue; }
 											const ansPath599 = fq599.slice(0, -3) + "-answer.md";
