@@ -1682,8 +1682,37 @@ function appendDiaryEntry(
 			if (movedAv > 0) tapSwallowed("auto-valve archived " + movedAv + " from " + dayNoExtAv + " (day file at 90% of window)");
 		}
 	} catch { /* statSync failure: skip the valve */ }
+	backupDayFile586(filePath);
 	return filePath;
 }
+// (586) Day-file backup ring: the 583 incident (a probe overwrite destroyed the live
+// day file; only the session transcript allowed recovery) proved the corpus needs its
+// own crash net. After each successful append, if the newest backup is >1h old (or
+// missing), rotate: bak-2 <- bak-1, bak-1 <- bak-0, bak-0 <- fresh copy. Worst case =
+// 1h of entries at risk instead of everything. Cost: one statSync per append + a
+// copy at most hourly. Read-only toward the live file; never breaks the write path.
+function backupDayFile586(filePath: string): void {
+	try {
+		const bak0 = filePath + ".bak-0";
+		let newestBakMs = -1;
+		try { newestBakMs = fs.statSync(bak0).mtimeMs; } catch { /* no backup yet */ }
+		if (Number.isFinite(newestBakMs) && Date.now() - newestBakMs < 3_600_000) return; // ring fresh
+		// A quiet hour with no new writes repeats nothing:
+		let same = false;
+		try {
+			same = fs.statSync(bak0).size === fs.statSync(filePath).size;
+			if (same) { same = fs.readFileSync(bak0).toString("utf8") === fs.readFileSync(filePath).toString("utf8"); }
+		} catch { same = false; }
+		if (same) return;
+		// Rotate: a crash mid-rotate loses the OLDEST ring slot only (bak-0 always readable).
+		for (let n586 = 2; n586 >= 1; n586--) {
+			try { fs.renameSync(filePath + ".bak-" + String(n586 - 1), filePath + ".bak-" + String(n586)); } catch { /* slot absent: skip */ }
+		}
+		try { fs.copyFileSync(filePath, bak0); } catch { /* best-effort */ }
+		// Rotate the mtime forward so the next hour is free:
+	} catch { /* never break the write path */ }
+}
+
 
 // ---------------------------------------------------------------------------
 // Daemon bookkeeping.
