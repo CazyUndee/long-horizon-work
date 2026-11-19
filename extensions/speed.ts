@@ -12,8 +12,14 @@ function entryTime(entry: any): number | undefined {
 }
 
 function outputTokens(message: any): number {
-	const usage = message?.usage;
-	return Number(usage?.output ?? usage?.outputTokens ?? 0);
+	// H577: hostile session entries can carry throwing getters/proxies in usage; one bad
+	// entry must be skipped like any other malformed shape, never crash the whole scan.
+	try {
+		const usage = message?.usage;
+		return Number(usage?.output ?? usage?.outputTokens ?? 0);
+	} catch {
+		return 0; // 0 <= 0 fails the caller's finite/>0 gate -> entry skipped
+	}
 }
 
 export default function (pi: ExtensionAPI) {
@@ -41,8 +47,13 @@ export default function (pi: ExtensionAPI) {
 				if (message?.role !== "assistant" || message.model !== model.id) continue;
 
 				const tokens = outputTokens(message);
-				const start = i > 0 ? Date.parse(String(entries[i - 1]?.timestamp)) : NaN;
-				const end = Date.parse(String(entry?.timestamp));
+				// H577: timestamps can be hostile getters too - one bad entry is skipped, not fatal.
+				let start = NaN;
+				let end = NaN;
+				try {
+					start = i > 0 ? Date.parse(String(entries[i - 1]?.timestamp)) : NaN;
+					end = Date.parse(String(entry?.timestamp));
+				} catch { continue; }
 
 				if (!Number.isFinite(tokens) || tokens <= 0) continue;
 				if (!Number.isFinite(end) || !Number.isFinite(start) || start === undefined) continue;
